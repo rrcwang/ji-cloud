@@ -310,6 +310,10 @@ pub fn configure(cfg: &mut ServiceConfig) {
         image::user::Create::METHOD.route().to(self::user::create),
     )
     .route(
+        image::web::Create::PATH,
+        image::web::Create::METHOD.route().to(self::web::create),
+    )
+    .route(
         image::user::Upload::PATH,
         image::user::Upload::METHOD.route().to(self::user::upload),
     )

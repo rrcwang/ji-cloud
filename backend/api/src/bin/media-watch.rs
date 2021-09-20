@@ -311,6 +311,7 @@ pub async fn signal_status_and_process_media(
         FileKind::ImagePng(PngImageFile::Original) => match library {
             MediaLibrary::Global => upload::process_image(&db, &s3, *id).await,
             MediaLibrary::User => upload::process_user_image(&db, &s3, *id).await,
+            MediaLibrary::Web => upload::process_web_image(&db, &s3, *id).await,
             _ => return Err(error::EventArc::InvalidEventResource),
         },
         FileKind::AnimationGif => upload::process_animation(db, s3, *id).await,

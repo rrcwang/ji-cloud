@@ -185,6 +185,92 @@ skip locked
     Ok(true)
 }
 
+pub async fn process_web_image(
+    db: &PgPool,
+    s3: &service::s3::Client,
+    id: Uuid,
+) -> anyhow::Result<bool> {
+    let mut txn = db.begin().await?;
+
+    let kind = sqlx::query!(
+        //language=SQL
+        r#"
+select kind as "kind: ImageKind"
+from web_media_library
+inner join web_media_upload on web_media_library.id = web_media_upload.media_id
+where (id = $1 and web_media_upload.uploaded_at is not null and processed_at >= web_media_upload.uploaded_at is not true)
+for no key update of web_media_upload
+for share of web_media_library
+skip locked
+        "#,
+        id
+    )
+    .fetch_optional(&mut txn)
+    .await?
+    .map(|it| it.kind);
+
+    let kind = match kind {
+        Some(row) => row,
+        None => {
+            log::info!("Unprocessed web image upload not found in database!");
+
+            txn.rollback().await?;
+            return Ok(false);
+        }
+    };
+
+    let file = s3
+        .download_media_for_processing(
+            MediaLibrary::Web,
+            id,
+            FileKind::ImagePng(PngImageFile::Original),
+        )
+        .await?;
+
+    let file = match file {
+        Some(it) => it,
+        None => {
+            sqlx::query!("update web_image_upload set processed_at = now(), processing_result = false where image_id = $1", id)
+                .execute(&mut txn)
+                .await?;
+
+            log::warn!("Image wasn't uploaded properly before processing?");
+            txn.commit().await?;
+            return Ok(true);
+        }
+    };
+
+    let processed = tokio::task::spawn_blocking(move || -> Result<_, error::Upload> {
+        let original = image::load_from_memory(&file).map_err(|_| error::Upload::InvalidMedia)?;
+        Ok(crate::image_ops::regenerate_images(&original, kind)?)
+    })
+    .await
+    .unwrap();
+
+    let (resized, thumbnail) = match processed {
+        Ok(it) => it,
+        Err(error::Upload::InvalidMedia) => {
+            sqlx::query!("update web_image_upload set processed_at = now(), processing_result = false where image_id = $1", id)
+                .execute(&mut txn)
+                .await?;
+
+            txn.commit().await?;
+            return Ok(true);
+        }
+        Err(error::Upload::InternalServerError(e)) => return Err(e),
+        Err(_) => unreachable!(),
+    };
+
+    s3.upload_png_images_copy_original(MediaLibrary::Web, id, resized, thumbnail)
+        .await?;
+
+    sqlx::query!("update Web_image_upload set processed_at = now(), processing_result = true where image_id = $1", id).execute(&mut txn).await?;
+
+    txn.commit().await?;
+
+    Ok(true)
+}
+
 pub async fn process_animation(
     db: &PgPool,
     s3: &crate::service::s3::Client,
