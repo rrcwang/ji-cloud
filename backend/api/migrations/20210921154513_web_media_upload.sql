@@ -6,3 +6,9 @@ create table web_media_upload (
     -- null if not processed, `is true` if the uploaded was successful, `is not true` otherwise.
     processing_result boolean
 );
+
+insert into web_media_upload (media_id, uploaded_at, processed_at, processing_result)
+select id as media_id, uploaded_at, now() as processed_at, true as processing_result
+from web_media_library;
+
+alter table web_media_library drop column uploaded_at;

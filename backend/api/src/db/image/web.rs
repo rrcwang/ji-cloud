@@ -3,24 +3,60 @@ use shared::domain::image::{user::UserImage, ImageId, ImageKind};
 use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
-pub async fn create(pool: &PgPool, user_id: &Uuid, url_string: String, kind: ImageKind) -> sqlx::Result<ImageId> {
+pub async fn create(
+    pool: &PgPool,
+    user_id: &Uuid,
+    url_string: String,
+    kind: ImageKind,
+) -> sqlx::Result<ImageId> {
     let mut txn = pool.begin().await?;
 
     // If we can already find the image, return early.
     if let Some(record) = sqlx::query!(
-            r#"
+        r#"
     select media_id,
     from web_media_library_url
     inner join web_media_library on id = media_id
     where media_url = $1"#,
-       &url_string
+        &url_string
     )
     .fetch_optional(pool.as_ref())
     .await?
-   {
-       log::trace!("Found the url");
-       return Ok(record._id);
-   }
+    {
+        log::trace!("Found the url");
+        return Ok(record._id);
+    }
+
+    let client: reqwest::Client = reqwest::ClientBuilder::new()
+        .connect_timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
+
+    // todo: this `?` should be a ClientError or "proxy/gateway error"
+    let mut response: reqwest::Response = client.get(url).send().await?;
+
+    let mut data = Vec::new();
+
+    while let Some(chunk) = response.chunk().await? {
+        let chunk: Bytes = chunk;
+        if data.len() + chunk.len() < MAX_RESPONSE_SIZE {
+            data.extend_from_slice(&chunk[..]);
+        } else {
+            return Err(anyhow::anyhow!("todo: better error here (data too big)").into());
+        }
+    }
+
+    log::trace!("data was {} bytes long", data.len());
+
+    let mut hasher = sha2::Sha384::new();
+
+    hasher.update(&data);
+
+    let hash = hasher.finalize().to_vec();
+
+    let mut txn = pool.begin().await?;
+
+    // If we can find the image by hash, return early.
 
     let id: ImageId = sqlx::query!(
         //language=SQL

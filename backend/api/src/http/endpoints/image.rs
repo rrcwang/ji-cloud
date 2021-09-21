@@ -24,6 +24,7 @@ use crate::{
 pub mod recent;
 pub mod tag;
 pub mod user;
+pub mod web;
 
 /// Create an image in the global image library.
 async fn create(

@@ -38,6 +38,8 @@ pub(super) async fn create(
     let id = db::image::web::create(&db, &claims.user_id, url_string);
 
 
+}
+
 
     let client: reqwest::Client = reqwest::ClientBuilder::new()
         .connect_timeout(std::time::Duration::from_secs(5))

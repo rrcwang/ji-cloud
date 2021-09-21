@@ -23,6 +23,9 @@ pub enum MediaKind {
 
     /// Media is a Mp3, and Audio
     Mp3Audio = 4,
+
+    /// Media is a Png, and a user profile image
+    PngUserProfile = 5,
 }
 
 impl MediaKind {
@@ -30,6 +33,7 @@ impl MediaKind {
         match self {
             Self::PngStickerImage => SharedMediaKind::Image(ImageKind::Sticker),
             Self::PngCanvasImage => SharedMediaKind::Image(ImageKind::Canvas),
+            Self::PngUserProfile => SharedMediaKind::Image(ImageKind::UserProfile),
             Self::GifAnimation => SharedMediaKind::Animation(AnimationKind::Gif),
             Self::SpritesheetAnimation => SharedMediaKind::Animation(AnimationKind::Spritesheet),
             Self::Mp3Audio => SharedMediaKind::Audio(AudioKind::Mp3),
